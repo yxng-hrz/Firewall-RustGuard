@@ -27,3 +27,16 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }
+
+fn is_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::geteuid() == 0 }
+    }
+    
+    #[cfg(not(unix))]
+    {
+        // Pour Windows ou autres OS, on ignore cette vérification pour l'instant
+        true
+    }
+}
