@@ -78,7 +78,6 @@ pub struct BlocklistConfig {
 
 impl AppConfig {
     /// Charge la configuration à partir d'un fichier
-    /// Cette fonction lit le fichier de configuration spécifié par le chemin et le convertit en structure AppConfig
     pub fn load(path: &Path) -> Result<Self> {
         let config_str = fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
@@ -88,7 +87,6 @@ impl AppConfig {
     }
     
     /// Sauvegarde la configuration dans un fichier
-    /// Cette fonction convertit la structure AppConfig en chaîne TOML et l'écrit dans le fichier spécifié
     pub fn save(&self, path: &Path) -> Result<()> {
         let config_str = toml::to_string_pretty(self)?;
         fs::write(path, config_str)?;
@@ -96,7 +94,6 @@ impl AppConfig {
     }
     
     /// Crée une configuration par défaut et la sauvegarde dans un fichier
-    /// Cette fonction génère une configuration avec des règles de base pour HTTP, HTTPS et DNS
     pub fn create_default(path: &Path) -> Result<Self> {
         let config = Self {
             general: GeneralConfig {
