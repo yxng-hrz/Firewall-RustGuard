@@ -75,3 +75,84 @@ pub struct BlocklistConfig {
     pub block_duration: u64,
     pub whitelist: Vec<String>,
 }
+
+impl AppConfig {
+    /// Charge la configuration à partir d'un fichier
+    /// Cette fonction lit le fichier de configuration spécifié par le chemin et le convertit en structure AppConfig
+    pub fn load(path: &Path) -> Result<Self> {
+        let config_str = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+        let config: AppConfig = toml::from_str(&config_str)
+            .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
+        Ok(config)
+    }
+    
+    /// Sauvegarde la configuration dans un fichier
+    /// Cette fonction convertit la structure AppConfig en chaîne TOML et l'écrit dans le fichier spécifié
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let config_str = toml::to_string_pretty(self)?;
+        fs::write(path, config_str)?;
+        Ok(())
+    }
+    
+    /// Crée une configuration par défaut et la sauvegarde dans un fichier
+    /// Cette fonction génère une configuration avec des règles de base pour HTTP, HTTPS et DNS
+    pub fn create_default(path: &Path) -> Result<Self> {
+        let config = Self {
+            general: GeneralConfig {
+                interface: "default".to_string(),
+                default_action: Action::Block,
+            },
+            rules: vec![
+                // Règle pour autoriser le trafic HTTP sortant
+                FirewallRule {
+                    name: "Allow HTTP".to_string(),
+                    action: Action::Allow,
+                    direction: Direction::Outbound,
+                    protocol: Protocol::TCP,
+                    src_ip: None,
+                    dst_ip: None,
+                    src_port: None,
+                    dst_port: Some(80),
+                    enabled: true,
+                },
+                // Règle pour autoriser le trafic HTTPS sortant
+                FirewallRule {
+                    name: "Allow HTTPS".to_string(),
+                    action: Action::Allow,
+                    direction: Direction::Outbound,
+                    protocol: Protocol::TCP,
+                    src_ip: None,
+                    dst_ip: None,
+                    src_port: None,
+                    dst_port: Some(443),
+                    enabled: true,
+                },
+                // Règle pour autoriser le trafic DNS sortant
+                FirewallRule {
+                    name: "Allow DNS".to_string(),
+                    action: Action::Allow,
+                    direction: Direction::Outbound,
+                    protocol: Protocol::UDP,
+                    src_ip: None,
+                    dst_ip: None,
+                    src_port: None,
+                    dst_port: Some(53),
+                    enabled: true,
+                },
+            ],
+            // Configuration de la liste noire
+            blocklist: BlocklistConfig {
+                enabled: true,
+                auto_block_threshold: 5,
+                block_duration: 3600,
+                whitelist: vec![
+                    "127.0.0.1".to_string(),
+                    "::1".to_string()
+                ],
+            },
+        };
+        config.save(path)?;
+        Ok(config)
+    }
+}
