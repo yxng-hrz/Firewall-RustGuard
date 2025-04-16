@@ -12,7 +12,6 @@ pub struct AppConfig {
     pub blocklist: BlocklistConfig,
 }
 // Configuration générale du pare-feu
-// Définit l'interface réseau à utiliser et l'action par défaut à appliquer
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GeneralConfig {
     pub interface: String,
@@ -20,8 +19,6 @@ pub struct GeneralConfig {
 }
 
 // Énumération des actions possibles pour une règle de pare-feu
-// PartialEq permet la comparaison entre les actions
-// Les attributs serde(rename) permettent d'utiliser des noms en minuscules dans le fichier TOML
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum Action {
     #[serde(rename = "allow")]
@@ -33,7 +30,6 @@ pub enum Action {
 }
 
 // Structure d'une règle de pare-feu
-// Définit tous les critères pour filtrer le trafic réseau
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FirewallRule {
     pub name: String,
