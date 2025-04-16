@@ -44,7 +44,6 @@ pub struct FirewallRule {
 }
 
 // Énumération des directions possibles pour le trafic réseau
-// Permet de filtrer selon que le trafic est entrant, sortant ou les deux
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum Direction {
     #[serde(rename = "outbound")]
@@ -56,7 +55,6 @@ pub enum Direction {
 }
 
 // Énumération des protocoles réseau pouvant être filtrés
-// Permet de cibler des types spécifiques de trafic
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum Protocol {
     #[serde(rename = "tcp")]
@@ -70,7 +68,6 @@ pub enum Protocol {
 }
 
 // Configuration de la liste noire
-// Gère le blocage automatique des adresses IP malveillantes
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BlocklistConfig {
     pub enabled: bool,
