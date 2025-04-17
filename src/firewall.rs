@@ -3,6 +3,8 @@
 use std::net::IpAddr;
 use std::time::{Instant, Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
+use anyhow::{Result, anyhow};
+use log::info;
 use crate::config::{Direction, Protocol, BlocklistConfig};
 
 /// Représente un paquet réseau pour le firewall.
@@ -63,7 +65,6 @@ pub struct Blocker {
 }
 
 impl Blocker {
-    /// Initialise le Blocker d’après la config.
     pub fn new(config: &BlocklistConfig) -> Self {
         let mut whitelist = HashSet::new();
         for ip_str in &config.whitelist {
@@ -81,7 +82,6 @@ impl Blocker {
         }
     }
 
-    /// Vérifie si l’IP est actuellement bloquée.
     pub fn is_blocked(&self, ip: &IpAddr) -> bool {
         if !self.enabled || self.whitelist.contains(ip) {
             return false;
@@ -89,12 +89,58 @@ impl Blocker {
         if let Some((since, duration)) = self.blocked_ips.get(ip) {
             match duration {
                 Some(d) => since.elapsed() < *d,
-                None => true, // blocage permanent
+                None => true,
             }
         } else {
             false
         }
     }
+
+    /// Incrémente le compteur et auto-bloque si seuil dépassé.
+    pub fn record_connection_attempt(&mut self, ip: IpAddr) {
+        if !self.enabled || self.whitelist.contains(&ip) || self.is_blocked(&ip) {
+            return;
+        }
+        let count = self.connection_attempts.entry(ip).or_insert(0);
+        *count += 1;
+        if *count >= self.auto_block_threshold {
+            let duration = Duration::from_secs(self.block_duration);
+            self.blocked_ips.insert(ip, (Instant::now(), Some(duration)));
+            self.connection_attempts.remove(&ip);
+            info!("Auto-blocked IP {} for excessive attempts", ip);
+        }
+    }
+
+    /// Bloque manuellement une IP pour une durée optionnelle.
+    pub fn block_ip(&mut self, ip: IpAddr, duration: Option<u64>) -> Result<()> {
+        if self.whitelist.contains(&ip) {
+            return Err(anyhow!("Cannot block whitelisted IP"));
+        }
+        let d = duration.map(Duration::from_secs);
+        self.blocked_ips.insert(ip, (Instant::now(), d));
+        info!("Blocked IP {}", ip);
+        Ok(())
+    }
+
+    /// Débloque une IP si elle était présente.
+    pub fn unblock_ip(&mut self, ip: IpAddr) -> Result<()> {
+        if self.blocked_ips.remove(&ip).is_some() {
+            info!("Unblocked IP {}", ip);
+            Ok(())
+        } else {
+            Err(anyhow!("IP not in blocklist"))
+        }
+    }
+
+    /// Nettoie les blocs expirés.
+    pub fn cleanup_expired_blocks(&mut self) {
+        self.blocked_ips.retain(|_, (since, duration)| {
+            match duration {
+                Some(d) => since.elapsed() < *d,
+                None => true,
+            }
+        });
+    }
 }
 
-// (à suivre dans le commit 3…)
+// (le Firewall arrive dans le commit suivant…)
