@@ -172,6 +172,60 @@ impl Firewall {
             handle: None,
         })
     }
+    /// Démarre la capture de paquets sur l’interface configurée.
+    pub fn run(&mut self) -> Result<()> {
+        if self.running {
+            return Err(anyhow!("Firewall already running"));
+        }
+        self.running = true;
+        info!("Starting firewall");
+
+        // Sélection de l’interface
+        let interface = if self.config.general.interface == "default" {
+            datalink::interfaces()
+                .into_iter()
+                .find(|i| i.is_up() && !i.is_loopback() && !i.ips.is_empty())
+                .ok_or_else(|| anyhow!("No suitable network interface found"))?
+        } else {
+            datalink::interfaces()
+                .into_iter()
+                .find(|i| i.name == self.config.general.interface)
+                .ok_or_else(|| anyhow!("Interface not found"))?
+        };
+        info!("Using interface: {}", interface.name);
+
+        // Ouverture du canal Ethernet
+        let (_, mut rx) = match datalink::channel(&interface, Default::default()) {
+            Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
+            Ok(_) => return Err(anyhow!("Unsupported channel type")),
+            Err(e) => return Err(anyhow!("Failed to create channel: {}", e)),
+        };
+
+        // Préparer les clones pour le thread
+        let config = self.config.clone();
+        let rules = self.rule_engine.clone();
+        let logger = self.logger.clone();
+        let blocker = Arc::new(Mutex::new(self.blocker.clone()));
+
+        // Thread de capture
+        let handle = thread::spawn(move || {
+            let local_mac = interface.mac;
+            while let Ok(frame) = rx.next() {
+                // TODO: dispatcher vers process_ipv4/6
+            }
+        });
+        self.handle = Some(handle);
+
+        // Thread de nettoyage périodique du Blocker
+        let cleanup_clone = Arc::new(Mutex::new(self.blocker.clone()));
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_secs(60));
+            cleanup_clone.lock().unwrap().cleanup_expired_blocks();
+        });
+
+        Ok(())
+    }
+}
 
 }
 
