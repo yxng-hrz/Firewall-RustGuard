@@ -26,3 +26,20 @@ impl RuleEngine {
         
         None
     }
+    
+    fn rule_matches(&self, rule: &FirewallRule, packet: &Packet) -> bool {
+        // Check direction
+        match rule.direction {
+            Direction::Outbound => {
+                if !packet.is_outbound() {
+                    return false;
+                }
+            },
+            Direction::Inbound => {
+                if !packet.is_inbound() {
+                    return false;
+                }
+            },
+            Direction::Any => {
+            }
+        }
