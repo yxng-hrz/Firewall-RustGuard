@@ -1,17 +1,25 @@
-// src/firewall.rs
-use std::net::IpAddr;
-use std::time::{Instant, Duration, SystemTime};
+use anyhow::{Result, anyhow};
+use log::{info, debug, warn, error};
+use pnet::datalink::{self, NetworkInterface, Channel};
+use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
+use pnet::packet::ip::{IpNextHeaderProtocols};
+use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::ipv6::Ipv6Packet;
+use pnet::packet::tcp::TcpPacket;
+use pnet::packet::udp::UdpPacket;
+use pnet::packet::icmp::IcmpPacket;
+use pnet::packet::icmpv6::Icmpv6Packet;
+use pnet::packet::Packet as PnetPacket;
 use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
-use anyhow::Result;
-use anyhow::anyhow;
-use log::info;
+use std::thread::{self, JoinHandle};
+use std::time::{Instant, Duration};
 
-use crate::config::{Direction, Protocol, BlocklistConfig, AppConfig};
+use crate::config::{AppConfig, Direction, Protocol, Action, FirewallRule};
 use crate::rules::RuleEngine;
 use crate::logger::Logger;
-/// Représente un paquet réseau pour le firewall.
+
 pub struct Packet {
     pub src_ip: IpAddr,
     pub dst_ip: IpAddr,
@@ -33,10 +41,11 @@ impl Packet {
         direction: Direction,
         size: usize,
     ) -> Self {
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+        
         Self {
             src_ip,
             dst_ip,
@@ -48,17 +57,16 @@ impl Packet {
             timestamp,
         }
     }
-
+    
     pub fn is_outbound(&self) -> bool {
         self.direction == Direction::Outbound
     }
-
+    
     pub fn is_inbound(&self) -> bool {
         self.direction == Direction::Inbound
     }
 }
 
-/// Gère le blocage dynamique d’IP via seuils et liste blanche.
 pub struct Blocker {
     enabled: bool,
     blocked_ips: HashMap<IpAddr, (Instant, Option<Duration>)>,
@@ -69,13 +77,14 @@ pub struct Blocker {
 }
 
 impl Blocker {
-    pub fn new(config: &BlocklistConfig) -> Self {
+    pub fn new(config: &crate::config::BlocklistConfig) -> Self {
         let mut whitelist = HashSet::new();
         for ip_str in &config.whitelist {
-            if let Ok(ip) = ip_str.parse() {
+            if let Ok(ip) = ip_str.parse::<IpAddr>() {
                 whitelist.insert(ip);
             }
         }
+        
         Self {
             enabled: config.enabled,
             blocked_ips: HashMap::new(),
@@ -85,48 +94,49 @@ impl Blocker {
             block_duration: config.block_duration,
         }
     }
-
+    
     pub fn is_blocked(&self, ip: &IpAddr) -> bool {
         if !self.enabled || self.whitelist.contains(ip) {
             return false;
         }
-        if let Some((since, duration)) = self.blocked_ips.get(ip) {
+        
+        if let Some((timestamp, duration)) = self.blocked_ips.get(ip) {
             match duration {
-                Some(d) => since.elapsed() < *d,
-                None => true,
+                Some(d) => timestamp.elapsed() < *d,
+                None => true, // Permanent block
             }
         } else {
             false
         }
     }
-
-    /// Incrémente le compteur et auto-bloque si seuil dépassé.
+    
     pub fn record_connection_attempt(&mut self, ip: IpAddr) {
         if !self.enabled || self.whitelist.contains(&ip) || self.is_blocked(&ip) {
             return;
         }
+        
         let count = self.connection_attempts.entry(ip).or_insert(0);
         *count += 1;
+        
         if *count >= self.auto_block_threshold {
             let duration = Duration::from_secs(self.block_duration);
             self.blocked_ips.insert(ip, (Instant::now(), Some(duration)));
             self.connection_attempts.remove(&ip);
-            info!("Auto-blocked IP {} for excessive attempts", ip);
+            info!("Auto-blocked IP {} for excessive connection attempts", ip);
         }
     }
-
-    /// Bloque manuellement une IP pour une durée optionnelle.
+    
     pub fn block_ip(&mut self, ip: IpAddr, duration: Option<u64>) -> Result<()> {
         if self.whitelist.contains(&ip) {
             return Err(anyhow!("Cannot block whitelisted IP"));
         }
-        let d = duration.map(Duration::from_secs);
-        self.blocked_ips.insert(ip, (Instant::now(), d));
+        
+        let duration = duration.map(Duration::from_secs);
+        self.blocked_ips.insert(ip, (Instant::now(), duration));
         info!("Blocked IP {}", ip);
         Ok(())
     }
-
-    /// Débloque une IP si elle était présente.
+    
     pub fn unblock_ip(&mut self, ip: IpAddr) -> Result<()> {
         if self.blocked_ips.remove(&ip).is_some() {
             info!("Unblocked IP {}", ip);
@@ -135,19 +145,17 @@ impl Blocker {
             Err(anyhow!("IP not in blocklist"))
         }
     }
-
-    /// Nettoie les blocs expirés.
+    
     pub fn cleanup_expired_blocks(&mut self) {
-        self.blocked_ips.retain(|_, (since, duration)| {
+        self.blocked_ips.retain(|_, (timestamp, duration)| {
             match duration {
-                Some(d) => since.elapsed() < *d,
-                None => true,
+                Some(d) => timestamp.elapsed() < *d,
+                None => true, // Keep permanent blocks
             }
         });
     }
+}
 
-
-    /// Gère l’ensemble du pare-feu: config, règles, logs, blocage, threads.
 pub struct Firewall {
     config: AppConfig,
     rule_engine: RuleEngine,
@@ -158,11 +166,11 @@ pub struct Firewall {
 }
 
 impl Firewall {
-    /// Crée le Firewall à partir de la configuration.
     pub fn new(config: AppConfig) -> Result<Self> {
         let rule_engine = RuleEngine::new(config.rules.clone());
         let logger = Logger::new();
         let blocker = Blocker::new(&config.blocklist);
+        
         Ok(Self {
             config,
             rule_engine,
@@ -172,61 +180,191 @@ impl Firewall {
             handle: None,
         })
     }
-    /// Démarre la capture de paquets sur l’interface configurée.
+    
     pub fn run(&mut self) -> Result<()> {
         if self.running {
             return Err(anyhow!("Firewall already running"));
         }
+        
         self.running = true;
         info!("Starting firewall");
-
-        // Sélection de l’interface
+        
         let interface = if self.config.general.interface == "default" {
+            // Get default interface
             datalink::interfaces()
                 .into_iter()
-                .find(|i| i.is_up() && !i.is_loopback() && !i.ips.is_empty())
+                .find(|iface| iface.is_up() && !iface.is_loopback() && !iface.ips.is_empty())
                 .ok_or_else(|| anyhow!("No suitable network interface found"))?
         } else {
+            // Find specific interface
             datalink::interfaces()
                 .into_iter()
-                .find(|i| i.name == self.config.general.interface)
+                .find(|iface| iface.name == self.config.general.interface)
                 .ok_or_else(|| anyhow!("Interface not found"))?
         };
-        info!("Using interface: {}", interface.name);
-
-        // Ouverture du canal Ethernet
+        
+        info!("Using network interface: {}", interface.name);
+        
+        // Create a channel to receive on
         let (_, mut rx) = match datalink::channel(&interface, Default::default()) {
             Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
             Ok(_) => return Err(anyhow!("Unsupported channel type")),
-            Err(e) => return Err(anyhow!("Failed to create channel: {}", e)),
+            Err(e) => return Err(anyhow!("Unable to create channel: {}", e)),
         };
-
-        // Préparer les clones pour le thread
+        
         let config = self.config.clone();
         let rules = self.rule_engine.clone();
-        let logger = self.logger.clone();
+        let logger_clone = self.logger.clone();
         let blocker = Arc::new(Mutex::new(self.blocker.clone()));
-
-        // Thread de capture
+        
         let handle = thread::spawn(move || {
             let local_mac = interface.mac;
-            while let Ok(frame) = rx.next() {
-                // TODO: dispatcher vers process_ipv4/6
+            
+            while let Ok(packet_data) = rx.next() {
+                if let Some(eth_packet) = EthernetPacket::new(packet_data) {
+                    // Determine packet direction
+                    let direction = if let Some(mac) = local_mac {
+                        if eth_packet.get_source() == mac {
+                            Direction::Outbound
+                        } else if eth_packet.get_destination() == mac {
+                            Direction::Inbound
+                        } else {
+                            Direction::Any
+                        }
+                    } else {
+                        Direction::Any
+                    };
+                    
+                    // Process the packet based on its type
+                    match eth_packet.get_ethertype() {
+                        EtherTypes::Ipv4 => {
+                            if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload()) {
+                                Self::process_ipv4_packet(&ipv4_packet, direction, &config, &rules, &logger_clone, &blocker);
+                            }
+                        },
+                        EtherTypes::Ipv6 => {
+                            if let Some(ipv6_packet) = Ipv6Packet::new(eth_packet.payload()) {
+                                Self::process_ipv6_packet(&ipv6_packet, direction, &config, &rules, &logger_clone, &blocker);
+                            }
+                        },
+                        _ => { /* Ignore other packet types */ }
+                    }
+                }
             }
         });
+        
         self.handle = Some(handle);
-
-        // Thread de nettoyage périodique du Blocker
-        let cleanup_clone = Arc::new(Mutex::new(self.blocker.clone()));
-        thread::spawn(move || loop {
-            thread::sleep(Duration::from_secs(60));
-            cleanup_clone.lock().unwrap().cleanup_expired_blocks();
+        
+        // Start cleanup thread for expired blocks
+        let blocker_cleanup = Arc::new(Mutex::new(self.blocker.clone()));
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(60));
+                let mut blocker = blocker_cleanup.lock().unwrap();
+                blocker.cleanup_expired_blocks();
+            }
         });
-
+        
         Ok(())
     }
+    
+    fn process_ipv4_packet(
+        ipv4_packet: &Ipv4Packet,
+        direction: Direction,
+        config: &AppConfig,
+        rules: &RuleEngine,
+        logger: &Logger,
+        blocker: &Arc<Mutex<Blocker>>,
+    ) {
+        let src_ip = IpAddr::V4(ipv4_packet.get_source());
+        let dst_ip = IpAddr::V4(ipv4_packet.get_destination());
+        let size = ipv4_packet.payload().len();
+        
+        // Check if IP is blocked
+        {
+            let blocker = blocker.lock().unwrap();
+            if blocker.is_blocked(&src_ip) || blocker.is_blocked(&dst_ip) {
+                logger.log_blocked_packet(src_ip, dst_ip, None, None, Protocol::Any, direction, size);
+                return;
+            }
+        }
+        
+        match ipv4_packet.get_next_level_protocol() {
+            IpNextHeaderProtocols::Tcp => {
+                if let Some(tcp_packet) = TcpPacket::new(ipv4_packet.payload()) {
+                    let packet = Packet::new(
+                        src_ip,
+                        dst_ip,
+                        Some(tcp_packet.get_source()),
+                        Some(tcp_packet.get_destination()),
+                        Protocol::TCP,
+                        direction,
+                        size,
+                    );
+                    
+                    Self::handle_packet(&packet, config, rules, logger, blocker);
+                }
+            },
+            IpNextHeaderProtocols::Udp => {
+                if let Some(udp_packet) = UdpPacket::new(ipv4_packet.payload()) {
+                    let packet = Packet::new(
+                        src_ip,
+                        dst_ip,
+                        Some(udp_packet.get_source()),
+                        Some(udp_packet.get_destination()),
+                        Protocol::UDP,
+                        direction,
+                        size,
+                    );
+                    
+                    Self::handle_packet(&packet, config, rules, logger, blocker);
+                }
+            },
+            IpNextHeaderProtocols::Icmp => {
+                if let Some(_) = IcmpPacket::new(ipv4_packet.payload()) {
+                    let packet = Packet::new(
+                        src_ip,
+                        dst_ip,
+                        None,
+                        None,
+                        Protocol::ICMP,
+                        direction,
+                        size,
+                    );
+                    
+                    Self::handle_packet(&packet, config, rules, logger, blocker);
+                }
+            },
+            _ => {
+                let packet = Packet::new(
+                    src_ip,
+                    dst_ip,
+                    None,
+                    None,
+                    Protocol::Any,
+                    direction,
+                    size,
+                );
+                
+                Self::handle_packet(&packet, config, rules, logger, blocker);
+            }
+        }
+    }
+    
+    
+   
 }
 
+// Add clone implementations for required types
+impl Clone for Blocker {
+    fn clone(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            blocked_ips: self.blocked_ips.clone(),
+            whitelist: self.whitelist.clone(),
+            connection_attempts: self.connection_attempts.clone(),
+            auto_block_threshold: self.auto_block_threshold,
+            block_duration: self.block_duration,
+        }
+    }
 }
-
-// (le Firewall arrive dans le commit suivant…)
