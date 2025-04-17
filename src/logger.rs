@@ -67,3 +67,28 @@ impl Logger {
         // Enregistre dans les logs un paquet bloqué avec protocole et taille
         info!("BLOCK {:?} {} -> {} ({} bytes)", protocol, src, dst, size);
     }
+        // Log un paquet sans préciser s'il est autorisé ou bloqué
+    pub fn log_packet(
+        &self,
+        src_ip: IpAddr,
+        dst_ip: IpAddr,
+        src_port: Option<u16>,
+        dst_port: Option<u16>,
+        protocol: Protocol,
+        direction: Direction,
+        size: usize,
+    ) {
+        let src = if let Some(port) = src_port {
+            format!("{}:{}", src_ip, port)
+        } else {
+            src_ip.to_string()
+        };
+        
+        let dst = if let Some(port) = dst_port {
+            format!("{}:{}", dst_ip, port)
+        } else {
+            dst_ip.to_string()
+        };
+        
+        info!("LOG {:?} {} -> {} ({} bytes)", protocol, src, dst, size);
+    }
