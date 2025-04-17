@@ -352,7 +352,40 @@ impl Firewall {
     }
     
     
-   
+    pub fn stop(&mut self) -> Result<()> {
+        if !self.running {
+            return Err(anyhow!("Firewall not running"));
+        }
+        
+        if let Some(handle) = self.handle.take() {
+            // Let the thread end naturally or wait a bit and force it
+            // This is simplified - in a full implementation, we would use a proper exit signal
+            handle.join().ok();
+        }
+        
+        self.running = false;
+        info!("Firewall stopped");
+        
+        Ok(())
+    }
+    
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
+    
+    pub fn update_rules(&mut self, rules: Vec<FirewallRule>) {
+        self.config.rules = rules.clone();
+        self.rule_engine = RuleEngine::new(rules);
+        info!("Firewall rules updated");
+    }
+    
+    pub fn add_to_blacklist(&mut self, ip: IpAddr, duration: Option<u64>) -> Result<()> {
+        self.blocker.block_ip(ip, duration)
+    }
+    
+    pub fn remove_from_blacklist(&mut self, ip: IpAddr) -> Result<()> {
+        self.blocker.unblock_ip(ip)
+    }
 }
 
 // Add clone implementations for required types
