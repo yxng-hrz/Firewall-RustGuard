@@ -1,12 +1,16 @@
 // src/firewall.rs
-
 use std::net::IpAddr;
 use std::time::{Instant, Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
-use anyhow::{Result, anyhow};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use anyhow::Result;
+use anyhow::anyhow;
 use log::info;
-use crate::config::{Direction, Protocol, BlocklistConfig};
 
+use crate::config::{Direction, Protocol, BlocklistConfig, AppConfig};
+use crate::rules::RuleEngine;
+use crate::logger::Logger;
 /// Représente un paquet réseau pour le firewall.
 pub struct Packet {
     pub src_ip: IpAddr,
@@ -141,6 +145,34 @@ impl Blocker {
             }
         });
     }
+
+
+    /// Gère l’ensemble du pare-feu: config, règles, logs, blocage, threads.
+pub struct Firewall {
+    config: AppConfig,
+    rule_engine: RuleEngine,
+    logger: Logger,
+    blocker: Blocker,
+    running: bool,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Firewall {
+    /// Crée le Firewall à partir de la configuration.
+    pub fn new(config: AppConfig) -> Result<Self> {
+        let rule_engine = RuleEngine::new(config.rules.clone());
+        let logger = Logger::new();
+        let blocker = Blocker::new(&config.blocklist);
+        Ok(Self {
+            config,
+            rule_engine,
+            logger,
+            blocker,
+            running: false,
+            handle: None,
+        })
+    }
+
 }
 
 // (le Firewall arrive dans le commit suivant…)
