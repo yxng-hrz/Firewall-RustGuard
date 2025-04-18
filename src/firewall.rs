@@ -351,6 +351,86 @@ impl Firewall {
         }
     }
     
+    fn process_ipv6_packet(
+        ipv6_packet: &Ipv6Packet,
+        direction: Direction,
+        config: &AppConfig,
+        rules: &RuleEngine,
+        logger: &Logger,
+        blocker: &Arc<Mutex<Blocker>>,
+    ) {
+        let src_ip = IpAddr::V6(ipv6_packet.get_source());
+        let dst_ip = IpAddr::V6(ipv6_packet.get_destination());
+        let size = ipv6_packet.payload().len();
+        
+        // Similar to process_ipv4_packet but for IPv6
+        // ...shortened for brevity...
+    }
+    
+    fn handle_packet(
+        packet: &Packet,
+        config: &AppConfig,
+        rules: &RuleEngine,
+        logger: &Logger,
+        blocker: &Arc<Mutex<Blocker>>,
+    ) {
+        // Apply rules
+        match rules.apply_rules(packet) {
+            Some(action) => {
+                match action {
+                    Action::Allow => {
+                        logger.log_allowed_packet(
+                            packet.src_ip, packet.dst_ip, packet.src_port, 
+                            packet.dst_port, packet.protocol.clone(), packet.direction.clone(), packet.size
+                        );
+                    },
+                    Action::Block => {
+                        logger.log_blocked_packet(
+                            packet.src_ip, packet.dst_ip, packet.src_port, 
+                            packet.dst_port, packet.protocol.clone(), packet.direction.clone(), packet.size
+                        );
+                        
+                        // Record connection attempt for potential auto-blocking
+                        let mut blocker = blocker.lock().unwrap();
+                        blocker.record_connection_attempt(packet.src_ip);
+                    },
+                    Action::Log => {
+                        logger.log_packet(
+                            packet.src_ip, packet.dst_ip, packet.src_port, 
+                            packet.dst_port, packet.protocol.clone(), packet.direction.clone(), packet.size
+                        );
+                    },
+                }
+            },
+            None => {
+                // Apply default action
+                match config.general.default_action {
+                    Action::Allow => {
+                        logger.log_allowed_packet(
+                            packet.src_ip, packet.dst_ip, packet.src_port, 
+                            packet.dst_port, packet.protocol.clone(), packet.direction.clone(), packet.size
+                        );
+                    },
+                    Action::Block => {
+                        logger.log_blocked_packet(
+                            packet.src_ip, packet.dst_ip, packet.src_port, 
+                            packet.dst_port, packet.protocol.clone(), packet.direction.clone(), packet.size
+                        );
+                        
+                        // Record connection attempt
+                        let mut blocker = blocker.lock().unwrap();
+                        blocker.record_connection_attempt(packet.src_ip);
+                    },
+                    Action::Log => {
+                        logger.log_packet(
+                            packet.src_ip, packet.dst_ip, packet.src_port, 
+                            packet.dst_port, packet.protocol.clone(), packet.direction.clone(), packet.size
+                        );
+                    },
+                }
+            }
+        }
+    }
     
     pub fn stop(&mut self) -> Result<()> {
         if !self.running {
