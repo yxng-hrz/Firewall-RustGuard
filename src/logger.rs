@@ -41,7 +41,8 @@ impl Logger {
         
         info!("ALLOW {:?} {} -> {} ({} bytes)", protocol, src, dst, size);
     }
-        // Log un paquet bloqué avec ses métadonnées
+    
+    // Log un paquet bloqué avec ses métadonnées
     pub fn log_blocked_packet(
         &self,
         src_ip: IpAddr,
@@ -67,7 +68,8 @@ impl Logger {
         // Enregistre dans les logs un paquet bloqué avec protocole et taille
         info!("BLOCK {:?} {} -> {} ({} bytes)", protocol, src, dst, size);
     }
-        // Log un paquet sans préciser s'il est autorisé ou bloqué
+    
+    // Log un paquet sans préciser s'il est autorisé ou bloqué
     pub fn log_packet(
         &self,
         src_ip: IpAddr,
@@ -92,3 +94,10 @@ impl Logger {
         
         info!("LOG {:?} {} -> {} ({} bytes)", protocol, src, dst, size);
     }
+    
+    // Log une mise à jour de la liste de blocage (blocklist)
+    pub fn log_blocklist_update(&self, ip: &IpAddr, action: &str) {
+        // Action peut être "Ajout" ou "Suppression" d'une IP dans la blocklist
+        info!("{} IP {}", action, ip);
+    }
+}
