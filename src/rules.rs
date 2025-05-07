@@ -105,3 +105,19 @@ impl RuleEngine {
         // All checks passed, rule matches
         true
     }
+    fn ip_matches(&self, ip_rule: &str, packet_ip: IpAddr) -> bool {
+        // Try to parse as CIDR network
+        if let Ok(network) = ip_rule.parse::<IpNetwork>() {
+            return network.contains(packet_ip);
+        }
+        
+        // Try exact IP match
+        if let Ok(rule_ip) = ip_rule.parse::<IpAddr>() {
+            return rule_ip == packet_ip;
+        }
+        
+        // Invalid IP format
+        debug!("Invalid IP or CIDR in rule: {}", ip_rule);
+        false
+    }
+}
