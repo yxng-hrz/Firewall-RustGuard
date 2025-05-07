@@ -65,3 +65,17 @@ impl RuleEngine {
                 // Any protocol is acceptable
             }
         }
+
+        // Check source IP if specified
+        if let Some(ref src_ip_str) = rule.src_ip {
+            if !self.ip_matches(src_ip_str, packet.src_ip) {
+                return false;
+            }
+        }
+        
+        // Check destination IP if specified
+        if let Some(ref dst_ip_str) = rule.dst_ip {
+            if !self.ip_matches(dst_ip_str, packet.dst_ip) {
+                return false;
+            }
+        }
