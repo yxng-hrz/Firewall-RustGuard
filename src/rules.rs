@@ -79,3 +79,26 @@ impl RuleEngine {
                 return false;
             }
         }
+        // Check source port if specified
+        if let Some(src_port) = rule.src_port {
+            if let Some(packet_src_port) = packet.src_port {
+                if src_port != packet_src_port {
+                    return false;
+                }
+            } else {
+                // Rule specifies a port but packet has no port
+                return false;
+            }
+        }
+        
+        // Check destination port if specified
+        if let Some(dst_port) = rule.dst_port {
+            if let Some(packet_dst_port) = packet.dst_port {
+                if dst_port != packet_dst_port {
+                    return false;
+                }
+            } else {
+                // Rule specifies a port but packet has no port
+                return false;
+            }
+        }
