@@ -43,3 +43,25 @@ impl RuleEngine {
             Direction::Any => {
             }
         }
+
+        // Check protocol
+        match rule.protocol {
+            Protocol::TCP => {
+                if packet.protocol != Protocol::TCP {
+                    return false;
+                }
+            },
+            Protocol::UDP => {
+                if packet.protocol != Protocol::UDP {
+                    return false;
+                }
+            },
+            Protocol::ICMP => {
+                if packet.protocol != Protocol::ICMP {
+                    return false;
+                }
+            },
+            Protocol::Any => {
+                // Any protocol is acceptable
+            }
+        }
