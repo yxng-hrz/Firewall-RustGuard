@@ -102,3 +102,6 @@ impl RuleEngine {
                 return false;
             }
         }
+        // All checks passed, rule matches
+        true
+    }
