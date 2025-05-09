@@ -1,0 +1,52 @@
+# Config du RustGuard
+
+[general]
+interface = "default"  # Utilise "default" pour l'interface système par défaut
+default_action = "block"  # Action par défaut si aucune règle ne correspond : "allow", "block" ou "log"
+
+# Toutes les defs des règles ici
+[[rules]]
+name = "Allow HTTP"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 80
+enabled = true
+
+[[rules]]
+name = "Allow HTTPS"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 443
+enabled = true
+
+[[rules]]
+name = "Allow DNS"
+action = "allow"
+direction = "outbound"
+protocol = "udp"
+dst_port = 53
+enabled = true
+
+[[rules]]
+name = "Allow DNS over TCP"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 53
+enabled = true
+
+[[rules]]
+name = "Block Telnet"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 23
+enabled = true
+
+[blocklist]
+enabled = true
+auto_block_threshold = 5  # Bloque après ce nombre de tentatives de connexion
+block_duration = 3600  # Durée du blocage en secondes (1 heure)
+whitelist = ["127.0.0.1", "::1"]  # Toujours autoriser ces IPs
