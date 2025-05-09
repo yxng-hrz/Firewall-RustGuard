@@ -1,7 +1,7 @@
 RustGuard
 A minimalist user-mode application firewall written in Rust that filters outgoing connections based on customizable rules. Features a logging system for tracking suspicious connection attempts and dynamic blocking of specific IPs or ports.
-Features
 
+Features
 User-Mode Firewall: No kernel modules or system-level modifications required
 Outgoing Connection Filtering: Control which applications can access the network
 Rule-Based Filtering: Define custom rules to allow or block connections
@@ -19,7 +19,7 @@ Administrator privileges (for network packet capture)
 
 Building from Source
 bash# Clone the repository
-git clone https://github.com/yourusername/rustguard.git
+git clone https://github.com/rustguard.git
 cd rustguard
 
 # Build the project
@@ -122,9 +122,3 @@ License
 This project is licensed under the MIT License - see the LICENSE file for details.
 Contributing
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-Fork the repository
-Create your feature branch (git checkout -b feature/amazing-feature)
-Commit your changes (git commit -m 'Add some amazing feature')
-Push to the branch (git push origin feature/amazing-feature)
-Open a Pull Request
