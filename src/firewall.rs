@@ -182,91 +182,96 @@ impl Firewall {
     }
     
     pub fn run(&mut self) -> Result<()> {
-        if self.running {
-            return Err(anyhow!("Firewall already running"));
-        }
+    if self.running {
+        return Err(anyhow!("Firewall already running"));
+    }
+    
+    self.running = true;
+    info!("Starting firewall");
+    
+    let interface = if self.config.general.interface == "default" {
+        // Get default interface
+        datalink::interfaces()
+            .into_iter()
+            .find(|iface| iface.is_up() && !iface.is_loopback() && !iface.ips.is_empty())
+            .ok_or_else(|| anyhow!("No suitable network interface found"))?
+    } else {
+        // Find specific interface
+        datalink::interfaces()
+            .into_iter()
+            .find(|iface| iface.name == self.config.general.interface)
+            .ok_or_else(|| anyhow!("Interface not found"))?
+    };
+    
+    info!("Using network interface: {}", interface.name);
+    
+    // Ajout des nouvelles lignes de log ici
+    info!("Interface selection: {}", interface.name);
+    info!("Interface MAC: {:?}", interface.mac);
+    info!("Interface IPs: {:?}", interface.ips);
+    
+    // Create a channel to receive on
+    let (_, mut rx) = match datalink::channel(&interface, Default::default()) {
+        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
+        Ok(_) => return Err(anyhow!("Unsupported channel type")),
+        Err(e) => return Err(anyhow!("Unable to create channel: {}", e)),
+    };
+    
+    let config = self.config.clone();
+    let rules = self.rule_engine.clone();
+    let logger_clone = self.logger.clone();
+    let blocker = Arc::new(Mutex::new(self.blocker.clone()));
+    
+    let handle = thread::spawn(move || {
+        let local_mac = interface.mac;
         
-        self.running = true;
-        info!("Starting firewall");
-        
-        let interface = if self.config.general.interface == "default" {
-            // Get default interface
-            datalink::interfaces()
-                .into_iter()
-                .find(|iface| iface.is_up() && !iface.is_loopback() && !iface.ips.is_empty())
-                .ok_or_else(|| anyhow!("No suitable network interface found"))?
-        } else {
-            // Find specific interface
-            datalink::interfaces()
-                .into_iter()
-                .find(|iface| iface.name == self.config.general.interface)
-                .ok_or_else(|| anyhow!("Interface not found"))?
-        };
-        
-        info!("Using network interface: {}", interface.name);
-        
-        // Create a channel to receive on
-        let (_, mut rx) = match datalink::channel(&interface, Default::default()) {
-            Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-            Ok(_) => return Err(anyhow!("Unsupported channel type")),
-            Err(e) => return Err(anyhow!("Unable to create channel: {}", e)),
-        };
-        
-        let config = self.config.clone();
-        let rules = self.rule_engine.clone();
-        let logger_clone = self.logger.clone();
-        let blocker = Arc::new(Mutex::new(self.blocker.clone()));
-        
-        let handle = thread::spawn(move || {
-            let local_mac = interface.mac;
-            
-            while let Ok(packet_data) = rx.next() {
-                if let Some(eth_packet) = EthernetPacket::new(packet_data) {
-                    // Determine packet direction
-                    let direction = if let Some(mac) = local_mac {
-                        if eth_packet.get_source() == mac {
-                            Direction::Outbound
-                        } else if eth_packet.get_destination() == mac {
-                            Direction::Inbound
-                        } else {
-                            Direction::Any
-                        }
+        while let Ok(packet_data) = rx.next() {
+            if let Some(eth_packet) = EthernetPacket::new(packet_data) {
+                // Determine packet direction
+                let direction = if let Some(mac) = local_mac {
+                    if eth_packet.get_source() == mac {
+                        Direction::Outbound
+                    } else if eth_packet.get_destination() == mac {
+                        Direction::Inbound
                     } else {
                         Direction::Any
-                    };
-                    
-                    // Process the packet based on its type
-                    match eth_packet.get_ethertype() {
-                        EtherTypes::Ipv4 => {
-                            if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload()) {
-                                Self::process_ipv4_packet(&ipv4_packet, direction, &config, &rules, &logger_clone, &blocker);
-                            }
-                        },
-                        EtherTypes::Ipv6 => {
-                            if let Some(ipv6_packet) = Ipv6Packet::new(eth_packet.payload()) {
-                                Self::process_ipv6_packet(&ipv6_packet, direction, &config, &rules, &logger_clone, &blocker);
-                            }
-                        },
-                        _ => { /* Ignore other packet types */ }
                     }
+                } else {
+                    Direction::Any
+                };
+                
+                // Process the packet based on its type
+                match eth_packet.get_ethertype() {
+                    EtherTypes::Ipv4 => {
+                        if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload()) {
+                            Self::process_ipv4_packet(&ipv4_packet, direction, &config, &rules, &logger_clone, &blocker);
+                        }
+                    },
+                    EtherTypes::Ipv6 => {
+                        if let Some(ipv6_packet) = Ipv6Packet::new(eth_packet.payload()) {
+                            Self::process_ipv6_packet(&ipv6_packet, direction, &config, &rules, &logger_clone, &blocker);
+                        }
+                    },
+                    _ => { /* Ignore other packet types */ }
                 }
             }
-        });
-        
-        self.handle = Some(handle);
-        
-        // Start cleanup thread for expired blocks
-        let blocker_cleanup = Arc::new(Mutex::new(self.blocker.clone()));
-        thread::spawn(move || {
-            loop {
-                thread::sleep(Duration::from_secs(60));
-                let mut blocker = blocker_cleanup.lock().unwrap();
-                blocker.cleanup_expired_blocks();
-            }
-        });
-        
-        Ok(())
-    }
+        }
+    });
+    
+    self.handle = Some(handle);
+    
+    // Start cleanup thread for expired blocks
+    let blocker_cleanup = Arc::new(Mutex::new(self.blocker.clone()));
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(60));
+            let mut blocker = blocker_cleanup.lock().unwrap();
+            blocker.cleanup_expired_blocks();
+        }
+    });
+    
+    Ok(())
+}
     
     fn process_ipv4_packet(
         ipv4_packet: &Ipv4Packet,
