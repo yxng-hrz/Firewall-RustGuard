@@ -62,3 +62,41 @@ fn main() {
             }
         }
     };
+
+    // Créer et démarrer le pare-feu
+    info!("Création de l'instance du pare-feu");
+    let mut firewall = match Firewall::new(config) {
+        Ok(fw) => fw,
+        Err(e) => {
+            error!("Erreur lors de la création du pare-feu: {}", e);
+            eprintln!("Erreur fatale: Impossible d'initialiser le pare-feu.");
+            process::exit(1);
+        }
+    };
+
+    info!("Démarrage du pare-feu");
+    if let Err(e) = firewall.run() {
+        error!("Erreur lors du démarrage du pare-feu: {}", e);
+        eprintln!("Erreur fatale: Impossible de démarrer le pare-feu.");
+        process::exit(1);
+    }
+
+    println!("RustGuard démarré avec succès.");
+    info!("RustGuard démarré avec succès");
+    println!("Appuyez sur Ctrl+C pour arrêter.");
+
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+fn is_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
