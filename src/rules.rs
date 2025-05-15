@@ -28,7 +28,10 @@ impl RuleEngine {
     }
     
     fn rule_matches(&self, rule: &FirewallRule, packet: &Packet) -> bool {
-        // Check direction
+        debug!("Testing rule '{}' against packet {}:{} -> {}:{}", 
+            rule.name, 
+            packet.src_ip, packet.src_port.unwrap_or(0), 
+            packet.dst_ip, packet.dst_port.unwrap_or(0));
         match rule.direction {
             Direction::Outbound => {
                 if !packet.is_outbound() {
