@@ -62,7 +62,7 @@ pub enum Protocol {
     #[serde(rename = "udp")]
     UDP,
     #[serde(rename = "icmp")]
-    ICMP
+    ICMP,
     #[serde(rename = "any")]
     Any,
 }

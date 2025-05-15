@@ -14,8 +14,8 @@ dst_port = 80
 enabled = true
 
 [[rules]]
-name = "Allow HTTPS"
-action = "allow"
+name = "Block HTTPS"
+action = "block"
 direction = "outbound"
 protocol = "tcp"
 dst_port = 443
@@ -43,6 +43,14 @@ action = "block"
 direction = "outbound"
 protocol = "tcp"
 dst_port = 23
+enabled = true
+
+[[rules]]
+name = "Block SSH"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 22
 enabled = true
 
 [blocklist]
