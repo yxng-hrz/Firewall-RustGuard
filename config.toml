@@ -4,6 +4,10 @@
 interface = "default"  # Utilise "default" pour l'interface système par défaut
 default_action = "block"  # Action par défaut si aucune règle ne correspond : "allow", "block" ou "log"
 
+[geo_firewall]
+enabled = true  # Active/désactive le géo-blocage
+blocked_countries = ["CN", "RU", "IR"]  # Liste des codes pays à bloquer (ex: ["CN", "RU", "IR"])
+
 # Toutes les defs des règles ici
 [[rules]]
 name = "Allow HTTP"
