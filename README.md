@@ -6,7 +6,7 @@ Un pare-feu applicatif en mode utilisateur écrit en Rust qui filtre les connexi
 
 ## Auteurs
 
-Développé par **Guillaume**, **Theo** et **Mohamed** - Version 0.1.0
+Développé par **Guillaume**, **Theo**, **Mohamed** et **Youness**
 
 ## Fonctionnalités
 
