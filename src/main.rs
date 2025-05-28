@@ -24,7 +24,7 @@ fn main() {
     println!("RustGuard: Pare-feu Applicatif Minimaliste");
     info!("RustGuard: Démarrage de l'application");
     println!("Version 0.1.0");
-    println!("Développé par Guillaume, Theo et Mohamed");
+    println!("Développé par Guillaume, Theo, Mohamed et Youness");
 
     // Vérifier les privilèges d'exécution
     if !is_root() {
