@@ -19,6 +19,7 @@ use std::time::{Instant, Duration};
 use crate::config::{AppConfig, Direction, Protocol, Action, FirewallRule};
 use crate::rules::RuleEngine;
 use crate::logger::Logger;
+use crate::simple_geo::SimpleGeoFirewall;
 
 pub struct Packet {
     pub src_ip: IpAddr,
@@ -161,6 +162,7 @@ pub struct Firewall {
     rule_engine: RuleEngine,
     logger: Logger,
     blocker: Blocker,
+    geo_firewall: SimpleGeoFirewall,
     running: bool,
     handle: Option<JoinHandle<()>>,
 }
@@ -170,108 +172,121 @@ impl Firewall {
         let rule_engine = RuleEngine::new(config.rules.clone());
         let logger = Logger::new();
         let blocker = Blocker::new(&config.blocklist);
+        let geo_firewall = SimpleGeoFirewall::new(
+            config.geo_firewall.blocked_countries.clone(),
+            config.geo_firewall.enabled
+        );
         
         Ok(Self {
             config,
             rule_engine,
             logger,
             blocker,
+            geo_firewall,
             running: false,
             handle: None,
         })
     }
     
     pub fn run(&mut self) -> Result<()> {
-    if self.running {
-        return Err(anyhow!("Firewall already running"));
-    }
-    
-    self.running = true;
-    info!("Starting firewall");
-    
-    let interface = if self.config.general.interface == "default" {
-        // Get default interface
-        datalink::interfaces()
-            .into_iter()
-            .find(|iface| iface.is_up() && !iface.is_loopback() && !iface.ips.is_empty())
-            .ok_or_else(|| anyhow!("No suitable network interface found"))?
-    } else {
-        // Find specific interface
-        datalink::interfaces()
-            .into_iter()
-            .find(|iface| iface.name == self.config.general.interface)
-            .ok_or_else(|| anyhow!("Interface not found"))?
-    };
-    
-    info!("Using network interface: {}", interface.name);
-    
-    // Ajout des nouvelles lignes de log ici
-    info!("Interface selection: {}", interface.name);
-    info!("Interface MAC: {:?}", interface.mac);
-    info!("Interface IPs: {:?}", interface.ips);
-    
-    // Create a channel to receive on
-    let (_, mut rx) = match datalink::channel(&interface, Default::default()) {
-        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => return Err(anyhow!("Unsupported channel type")),
-        Err(e) => return Err(anyhow!("Unable to create channel: {}", e)),
-    };
-    
-    let config = self.config.clone();
-    let rules = self.rule_engine.clone();
-    let logger_clone = self.logger.clone();
-    let blocker = Arc::new(Mutex::new(self.blocker.clone()));
-    
-    let handle = thread::spawn(move || {
-        let local_mac = interface.mac;
+        if self.running {
+            return Err(anyhow!("Firewall already running"));
+        }
         
-        while let Ok(packet_data) = rx.next() {
-            if let Some(eth_packet) = EthernetPacket::new(packet_data) {
-                // Determine packet direction
-                let direction = if let Some(mac) = local_mac {
-                    if eth_packet.get_source() == mac {
-                        Direction::Outbound
-                    } else if eth_packet.get_destination() == mac {
-                        Direction::Inbound
+        self.running = true;
+        info!("Starting firewall");
+        
+        let interface = if self.config.general.interface == "default" {
+            // Get default interface
+            datalink::interfaces()
+                .into_iter()
+                .find(|iface| iface.is_up() && !iface.is_loopback() && !iface.ips.is_empty())
+                .ok_or_else(|| anyhow!("No suitable network interface found"))?
+        } else {
+            // Find specific interface
+            datalink::interfaces()
+                .into_iter()
+                .find(|iface| iface.name == self.config.general.interface)
+                .ok_or_else(|| anyhow!("Interface not found"))?
+        };
+        
+        info!("Using network interface: {}", interface.name);
+        
+        // Ajout des nouvelles lignes de log ici
+        info!("Interface selection: {}", interface.name);
+        info!("Interface MAC: {:?}", interface.mac);
+        info!("Interface IPs: {:?}", interface.ips);
+        
+        // Log geo-firewall status
+        if self.config.geo_firewall.enabled {
+            info!("🌍 Geo-firewall enabled. Blocked countries: {:?}", self.config.geo_firewall.blocked_countries);
+        } else {
+            info!("🌍 Geo-firewall disabled");
+        }
+        
+        // Create a channel to receive on
+        let (_, mut rx) = match datalink::channel(&interface, Default::default()) {
+            Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
+            Ok(_) => return Err(anyhow!("Unsupported channel type")),
+            Err(e) => return Err(anyhow!("Unable to create channel: {}", e)),
+        };
+        
+        let config = self.config.clone();
+        let rules = self.rule_engine.clone();
+        let logger_clone = self.logger.clone();
+        let blocker = Arc::new(Mutex::new(self.blocker.clone()));
+        let geo_firewall = Arc::new(Mutex::new(self.geo_firewall.clone()));
+        
+        let handle = thread::spawn(move || {
+            let local_mac = interface.mac;
+            
+            while let Ok(packet_data) = rx.next() {
+                if let Some(eth_packet) = EthernetPacket::new(packet_data) {
+                    // Determine packet direction
+                    let direction = if let Some(mac) = local_mac {
+                        if eth_packet.get_source() == mac {
+                            Direction::Outbound
+                        } else if eth_packet.get_destination() == mac {
+                            Direction::Inbound
+                        } else {
+                            Direction::Any
+                        }
                     } else {
                         Direction::Any
+                    };
+                    
+                    // Process the packet based on its type
+                    match eth_packet.get_ethertype() {
+                        EtherTypes::Ipv4 => {
+                            if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload()) {
+                                Self::process_ipv4_packet(&ipv4_packet, direction, &config, &rules, &logger_clone, &blocker, &geo_firewall);
+                            }
+                        },
+                        EtherTypes::Ipv6 => {
+                            if let Some(ipv6_packet) = Ipv6Packet::new(eth_packet.payload()) {
+                                Self::process_ipv6_packet(&ipv6_packet, direction, &config, &rules, &logger_clone, &blocker, &geo_firewall);
+                            }
+                        },
+                        _ => { /* Ignore other packet types */ }
                     }
-                } else {
-                    Direction::Any
-                };
-                
-                // Process the packet based on its type
-                match eth_packet.get_ethertype() {
-                    EtherTypes::Ipv4 => {
-                        if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload()) {
-                            Self::process_ipv4_packet(&ipv4_packet, direction, &config, &rules, &logger_clone, &blocker);
-                        }
-                    },
-                    EtherTypes::Ipv6 => {
-                        if let Some(ipv6_packet) = Ipv6Packet::new(eth_packet.payload()) {
-                            Self::process_ipv6_packet(&ipv6_packet, direction, &config, &rules, &logger_clone, &blocker);
-                        }
-                    },
-                    _ => { /* Ignore other packet types */ }
                 }
             }
-        }
-    });
-    
-    self.handle = Some(handle);
-    
-    // Start cleanup thread for expired blocks
-    let blocker_cleanup = Arc::new(Mutex::new(self.blocker.clone()));
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_secs(60));
-            let mut blocker = blocker_cleanup.lock().unwrap();
-            blocker.cleanup_expired_blocks();
-        }
-    });
-    
-    Ok(())
-}
+        });
+        
+        self.handle = Some(handle);
+        
+        // Start cleanup thread for expired blocks
+        let blocker_cleanup = Arc::new(Mutex::new(self.blocker.clone()));
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(60));
+                let mut blocker = blocker_cleanup.lock().unwrap();
+                blocker.cleanup_expired_blocks();
+            }
+        });
+        
+        Ok(())
+    }
     
     fn process_ipv4_packet(
         ipv4_packet: &Ipv4Packet,
@@ -280,10 +295,24 @@ impl Firewall {
         rules: &RuleEngine,
         logger: &Logger,
         blocker: &Arc<Mutex<Blocker>>,
+        geo_firewall: &Arc<Mutex<SimpleGeoFirewall>>,
     ) {
         let src_ip = IpAddr::V4(ipv4_packet.get_source());
         let dst_ip = IpAddr::V4(ipv4_packet.get_destination());
         let size = ipv4_packet.payload().len();
+        
+        // Check geo-firewall first
+        {
+            let geo_fw = geo_firewall.lock().unwrap();
+            if direction == Direction::Inbound && geo_fw.should_block(src_ip) {
+                logger.log_blocked_packet(src_ip, dst_ip, None, None, Protocol::Any, direction, size);
+                return;
+            }
+            if direction == Direction::Outbound && geo_fw.should_block(dst_ip) {
+                logger.log_blocked_packet(src_ip, dst_ip, None, None, Protocol::Any, direction, size);
+                return;
+            }
+        }
         
         // Check if IP is blocked
         {
@@ -363,13 +392,47 @@ impl Firewall {
         rules: &RuleEngine,
         logger: &Logger,
         blocker: &Arc<Mutex<Blocker>>,
+        geo_firewall: &Arc<Mutex<SimpleGeoFirewall>>,
     ) {
         let src_ip = IpAddr::V6(ipv6_packet.get_source());
         let dst_ip = IpAddr::V6(ipv6_packet.get_destination());
         let size = ipv6_packet.payload().len();
         
+        // Check geo-firewall first
+        {
+            let geo_fw = geo_firewall.lock().unwrap();
+            if direction == Direction::Inbound && geo_fw.should_block(src_ip) {
+                logger.log_blocked_packet(src_ip, dst_ip, None, None, Protocol::Any, direction, size);
+                return;
+            }
+            if direction == Direction::Outbound && geo_fw.should_block(dst_ip) {
+                logger.log_blocked_packet(src_ip, dst_ip, None, None, Protocol::Any, direction, size);
+                return;
+            }
+        }
+        
         // Similar to process_ipv4_packet but for IPv6
-        // ...shortened for brevity...
+        // Check if IP is blocked
+        {
+            let blocker = blocker.lock().unwrap();
+            if blocker.is_blocked(&src_ip) || blocker.is_blocked(&dst_ip) {
+                logger.log_blocked_packet(src_ip, dst_ip, None, None, Protocol::Any, direction, size);
+                return;
+            }
+        }
+        
+        // Process IPv6 packet similarly to IPv4
+        let packet = Packet::new(
+            src_ip,
+            dst_ip,
+            None,
+            None,
+            Protocol::Any,
+            direction,
+            size,
+        );
+        
+        Self::handle_packet(&packet, config, rules, logger, blocker);
     }
     
     fn handle_packet(
@@ -470,6 +533,16 @@ impl Firewall {
     
     pub fn remove_from_blacklist(&mut self, ip: IpAddr) -> Result<()> {
         self.blocker.unblock_ip(ip)
+    }
+    
+    pub fn block_country(&mut self, country_code: &str) {
+        self.geo_firewall.block_country(country_code);
+        info!("Blocked country: {}", country_code);
+    }
+    
+    pub fn enable_threat_protection(&mut self) {
+        self.geo_firewall.enable_threat_protection();
+        info!("Threat protection enabled");
     }
 }
 
