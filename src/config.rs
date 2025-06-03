@@ -10,12 +10,21 @@ pub struct AppConfig {
     pub general: GeneralConfig,
     pub rules: Vec<FirewallRule>,
     pub blocklist: BlocklistConfig,
+    pub geo_firewall: GeoFirewallConfig,
 }
+
 // Configuration générale du pare-feu
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GeneralConfig {
     pub interface: String,
     pub default_action: Action,
+}
+
+// Configuration du pare-feu géographique
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GeoFirewallConfig {
+    pub enabled: bool,
+    pub blocked_countries: Vec<String>,
 }
 
 // Énumération des actions possibles pour une règle de pare-feu
@@ -147,6 +156,11 @@ impl AppConfig {
                     "127.0.0.1".to_string(),
                     "::1".to_string()
                 ],
+            },
+            // Configuration du pare-feu géographique
+            geo_firewall: GeoFirewallConfig {
+                enabled: false,
+                blocked_countries: vec![],
             },
         };
         config.save(path)?;
