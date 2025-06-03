@@ -8,6 +8,7 @@ mod config;
 mod firewall;
 mod rules;
 mod logger;
+mod simple_geo;
 
 use crate::config::AppConfig;
 use crate::firewall::Firewall;
@@ -24,7 +25,7 @@ fn main() {
     println!("RustGuard: Pare-feu Applicatif Minimaliste");
     info!("RustGuard: Démarrage de l'application");
     println!("Version 0.1.0");
-    println!("Développé par Guillaume, Theo, Mohamed et Youness");
+    println!("Développé par Guillaume, Theo et Mohamed");
 
     // Vérifier les privilèges d'exécution
     if !is_root() {
