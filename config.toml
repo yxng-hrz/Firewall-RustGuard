@@ -1,16 +1,20 @@
-# Config du RustGuard
+# Configuration RustGuard MAXIMALE - Tous les scénarios de test
+# ================================================================
 
 [general]
-interface = "default"  # Utilise "default" pour l'interface système par défaut
-default_action = "block"  # Action par défaut si aucune règle ne correspond : "allow", "block" ou "log"
+interface = "default"  # Interface réseau par défaut
+default_action = "block"  # Action par défaut si aucune règle ne correspond
 
 [geo_firewall]
-enabled = true  # Active/désactive le géo-blocage
-blocked_countries = ["CN", "RU", "IR"]  # Liste des codes pays à bloquer (ex: ["CN", "RU", "IR"])
+enabled = true  # Géo-blocage activé
+blocked_countries = ["CN", "RU", "IR", "KP", "SY", "AF", "IQ", "LY", "SO", "SD"]  # Pays à haut risque
 
-# Toutes les defs des règles ici
+# ==========================================
+# RÈGLES DE NAVIGATION WEB
+# ==========================================
+
 [[rules]]
-name = "Allow HTTP"
+name = "Allow HTTP Standard"
 action = "allow"
 direction = "outbound"
 protocol = "tcp"
@@ -18,7 +22,7 @@ dst_port = 80
 enabled = true
 
 [[rules]]
-name = "Block HTTPS"
+name = "Block HTTPS (Test)"
 action = "block"
 direction = "outbound"
 protocol = "tcp"
@@ -26,7 +30,27 @@ dst_port = 443
 enabled = true
 
 [[rules]]
-name = "Allow DNS"
+name = "Allow HTTP Alt Port"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 8080
+enabled = true
+
+[[rules]]
+name = "Allow HTTPS Alt Port"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 8443
+enabled = true
+
+# ==========================================
+# RÈGLES DNS
+# ==========================================
+
+[[rules]]
+name = "Allow DNS UDP"
 action = "allow"
 direction = "outbound"
 protocol = "udp"
@@ -34,11 +58,135 @@ dst_port = 53
 enabled = true
 
 [[rules]]
-name = "Allow DNS over TCP"
+name = "Allow DNS TCP"
 action = "allow"
 direction = "outbound"
 protocol = "tcp"
 dst_port = 53
+enabled = true
+
+[[rules]]
+name = "Allow DNS over HTTPS"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 853
+enabled = true
+
+[[rules]]
+name = "Allow DNS over TLS"
+action = "allow"
+direction = "outbound"
+protocol = "udp"
+dst_port = 853
+enabled = true
+
+# ==========================================
+# RÈGLES EMAIL
+# ==========================================
+
+[[rules]]
+name = "Allow SMTP"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 25
+enabled = true
+
+[[rules]]
+name = "Allow SMTP SSL"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 465
+enabled = true
+
+[[rules]]
+name = "Allow SMTP TLS"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 587
+enabled = true
+
+[[rules]]
+name = "Allow POP3"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 110
+enabled = true
+
+[[rules]]
+name = "Allow POP3S"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 995
+enabled = true
+
+[[rules]]
+name = "Allow IMAP"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 143
+enabled = true
+
+[[rules]]
+name = "Allow IMAPS"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 993
+enabled = true
+
+# ==========================================
+# RÈGLES FTP
+# ==========================================
+
+[[rules]]
+name = "Block FTP Control"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 21
+enabled = true
+
+[[rules]]
+name = "Block FTP Data"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 20
+enabled = true
+
+[[rules]]
+name = "Allow FTPS"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 990
+enabled = true
+
+[[rules]]
+name = "Allow SFTP"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 22
+enabled = false  # Désactivé car SSH est bloqué par défaut
+
+# ==========================================
+# RÈGLES ADMINISTRATION DISTANTE
+# ==========================================
+
+[[rules]]
+name = "Block SSH"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 22
 enabled = true
 
 [[rules]]
@@ -50,15 +198,433 @@ dst_port = 23
 enabled = true
 
 [[rules]]
-name = "Block SSH"
+name = "Block RDP"
 action = "block"
 direction = "outbound"
+protocol = "tcp"
+dst_port = 3389
+enabled = true
+
+[[rules]]
+name = "Block VNC"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 5900
+enabled = true
+
+[[rules]]
+name = "Allow SSH Trusted Network"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_ip = "192.168.1.0/24"
+dst_port = 22
+enabled = true
+
+# ==========================================
+# RÈGLES BASES DE DONNÉES
+# ==========================================
+
+[[rules]]
+name = "Block MySQL"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 3306
+enabled = true
+
+[[rules]]
+name = "Block PostgreSQL"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 5432
+enabled = true
+
+[[rules]]
+name = "Block MongoDB"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 27017
+enabled = true
+
+[[rules]]
+name = "Block Redis"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 6379
+enabled = true
+
+[[rules]]
+name = "Block Elasticsearch"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 9200
+enabled = true
+
+# ==========================================
+# RÈGLES P2P ET TORRENTS
+# ==========================================
+
+[[rules]]
+name = "Block BitTorrent"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 6881
+enabled = true
+
+[[rules]]
+name = "Block BitTorrent Range"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 6889
+enabled = true
+
+[[rules]]
+name = "Block eMule"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 4662
+enabled = true
+
+[[rules]]
+name = "Block Kazaa"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 1214
+enabled = true
+
+# ==========================================
+# RÈGLES GAMING
+# ==========================================
+
+[[rules]]
+name = "Allow Steam"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 27015
+enabled = true
+
+[[rules]]
+name = "Allow Discord"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 443
+enabled = false  # Conflit avec HTTPS bloqué
+
+[[rules]]
+name = "Allow Battle.net"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 1119
+enabled = true
+
+[[rules]]
+name = "Allow Xbox Live"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 3074
+enabled = true
+
+# ==========================================
+# RÈGLES MESSAGING
+# ==========================================
+
+[[rules]]
+name = "Allow WhatsApp Web"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 443
+enabled = false  # Conflit avec HTTPS bloqué
+
+[[rules]]
+name = "Allow Telegram"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 443
+enabled = false  # Conflit avec HTTPS bloqué
+
+[[rules]]
+name = "Block IRC"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 6667
+enabled = true
+
+# ==========================================
+# RÈGLES DÉVELOPPEMENT
+# ==========================================
+
+[[rules]]
+name = "Allow Git SSH"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_ip = "github.com"
+dst_port = 22
+enabled = false  # SSH bloqué par défaut
+
+[[rules]]
+name = "Allow Docker Registry"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 5000
+enabled = true
+
+[[rules]]
+name = "Allow Kubernetes API"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 6443
+enabled = true
+
+[[rules]]
+name = "Allow Node.js Dev"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 3000
+enabled = true
+
+# ==========================================
+# RÈGLES MONITORING
+# ==========================================
+
+[[rules]]
+name = "Allow Prometheus"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 9090
+enabled = true
+
+[[rules]]
+name = "Allow Grafana"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 3000
+enabled = true
+
+[[rules]]
+name = "Block SNMP"
+action = "block"
+direction = "outbound"
+protocol = "udp"
+dst_port = 161
+enabled = true
+
+# ==========================================
+# RÈGLES RÉSEAU LOCAL
+# ==========================================
+
+[[rules]]
+name = "Allow Local Web"
+action = "allow"
+direction = "outbound"
+protocol = "tcp"
+src_ip = "192.168.0.0/16"
+dst_ip = "192.168.0.0/16"
+enabled = true
+
+[[rules]]
+name = "Allow Local DNS"
+action = "allow"
+direction = "outbound"
+protocol = "udp"
+dst_ip = "192.168.1.1"
+dst_port = 53
+enabled = true
+
+[[rules]]
+name = "Block SMB"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 445
+enabled = true
+
+[[rules]]
+name = "Block NetBIOS"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 139
+enabled = true
+
+# ==========================================
+# RÈGLES SÉCURITÉ AVANCÉES
+# ==========================================
+
+[[rules]]
+name = "Block Suspicious High Ports"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 31337
+enabled = true
+
+[[rules]]
+name = "Block Common Backdoor"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 12345
+enabled = true
+
+[[rules]]
+name = "Block Trojan Ports"
+action = "block"
+direction = "outbound"
+protocol = "tcp"
+dst_port = 1337
+enabled = true
+
+[[rules]]
+name = "Log Suspicious Activity"
+action = "log"
+direction = "inbound"
+protocol = "tcp"
+src_port = 666
+enabled = true
+
+# ==========================================
+# RÈGLES INBOUND (ENTRANT)
+# ==========================================
+
+[[rules]]
+name = "Block Inbound SSH"
+action = "block"
+direction = "inbound"
 protocol = "tcp"
 dst_port = 22
 enabled = true
 
+[[rules]]
+name = "Block Inbound Telnet"
+action = "block"
+direction = "inbound"
+protocol = "tcp"
+dst_port = 23
+enabled = true
+
+[[rules]]
+name = "Block Inbound FTP"
+action = "block"
+direction = "inbound"
+protocol = "tcp"
+dst_port = 21
+enabled = true
+
+[[rules]]
+name = "Allow Inbound ICMP"
+action = "allow"
+direction = "inbound"
+protocol = "icmp"
+enabled = true
+
+[[rules]]
+name = "Block Inbound HTTP"
+action = "block"
+direction = "inbound"
+protocol = "tcp"
+dst_port = 80
+enabled = true
+
+[[rules]]
+name = "Block Inbound HTTPS"
+action = "block"
+direction = "inbound"
+protocol = "tcp"
+dst_port = 443
+enabled = true
+
+# ==========================================
+# RÈGLES SPÉCIFIQUES PAR IP
+# ==========================================
+
+[[rules]]
+name = "Block Suspicious IP Range"
+action = "block"
+direction = "outbound"
+protocol = "any"
+dst_ip = "10.0.0.0/8"
+enabled = false  # Désactivé par défaut
+
+[[rules]]
+name = "Allow Google DNS"
+action = "allow"
+direction = "outbound"
+protocol = "udp"
+dst_ip = "8.8.8.8"
+dst_port = 53
+enabled = true
+
+[[rules]]
+name = "Allow Cloudflare DNS"
+action = "allow"
+direction = "outbound"
+protocol = "udp"
+dst_ip = "1.1.1.1"
+dst_port = 53
+enabled = true
+
+# ==========================================
+# RÈGLES DE PROTOCOLES SPÉCIAUX
+# ==========================================
+
+[[rules]]
+name = "Allow ICMP Ping"
+action = "allow"
+direction = "outbound"
+protocol = "icmp"
+enabled = true
+
+[[rules]]
+name = "Block ICMP Inbound"
+action = "block"
+direction = "inbound"
+protocol = "icmp"
+enabled = false  # Permet le ping entrant
+
+[[rules]]
+name = "Log All UDP"
+action = "log"
+direction = "any"
+protocol = "udp"
+enabled = false  # Désactivé pour éviter le spam
+
+# ==========================================
+# CONFIGURATION DE LA BLOCKLIST
+# ==========================================
+
 [blocklist]
 enabled = true
-auto_block_threshold = 5  # Bloque après ce nombre de tentatives de connexion
-block_duration = 3600  # Durée du blocage en secondes (1 heure)
-whitelist = ["127.0.0.1", "::1"]  # Toujours autoriser ces IPs
+auto_block_threshold = 3  # Plus strict : 3 tentatives au lieu de 5
+block_duration = 7200     # 2 heures de blocage
+whitelist = [
+    "127.0.0.1",           # Localhost IPv4
+    "::1",                 # Localhost IPv6
+    "192.168.1.1",         # Routeur local
+    "192.168.1.0/24",      # Réseau local
+    "8.8.8.8",             # Google DNS
+    "1.1.1.1",             # Cloudflare DNS
+    "1.0.0.1"              # Cloudflare DNS secondaire
+]
